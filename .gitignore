@@ -1,0 +1,16 @@
+# Terraform
+*.tfstate*
+*.tfvars
+.terraform/
+crash.log
+crash.*.log
+
+# Lambda build artifacts
+build/
+*.zip
+__pycache__/
+*.pyc
+
+# Misc
+.DS_Store
+.env

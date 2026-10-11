@@ -1,0 +1,104 @@
+#!/bin/bash
+# Runs once, on first boot, via cloud-init.
+# It only installs systemd units and a script; the real work is done by
+# systemd on every boot.
+# No `set -x`: the auth key must never reach the logs.
+set -euo pipefail
+
+# ---------- 1. Auto-stop timer (first, so it works even if the rest fails) ----------
+
+cat >/etc/systemd/system/auto-stop.service <<'EOF'
+[Unit]
+Description=Power off this instance (auto stop)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl poweroff
+EOF
+
+cat >/etc/systemd/system/auto-stop.timer <<'EOF'
+[Unit]
+Description=Power off ${auto_stop_minutes} minutes after every boot
+
+[Timer]
+OnBootSec=${auto_stop_minutes}min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now auto-stop.timer
+
+# ---------- 2. Tailscale setup (retried on every boot until it succeeds once) ----------
+
+cat >/usr/local/sbin/tailscale-bootstrap.sh <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+MARKER=/var/lib/qtailscale-ec2/registered
+KEYFILE=/run/tailscale-authkey
+
+# Keep dnf from running out of memory on t4g.nano (512 MB)
+if [ ! -f /swapfile ]; then
+  dd if=/dev/zero of=/swapfile bs=1M count=512 status=none
+  chmod 600 /swapfile
+  mkswap /swapfile >/dev/null
+  echo '/swapfile none swap sw 0 0' >>/etc/fstab
+fi
+swapon /swapfile 2>/dev/null || true
+
+# IP forwarding, required for an exit node
+cat >/etc/sysctl.d/99-tailscale.conf <<'SYSCTL'
+net.ipv4.ip_forward = 1
+net.ipv6.conf.all.forwarding = 1
+SYSCTL
+sysctl -q -p /etc/sysctl.d/99-tailscale.conf
+
+if ! command -v tailscale >/dev/null; then
+  curl -fsSL https://pkgs.tailscale.com/stable/amazon-linux/2023/tailscale.repo \
+    -o /etc/yum.repos.d/tailscale.repo
+  dnf install -y tailscale
+fi
+systemctl enable --now tailscaled
+
+# Pass the auth key through a file on tmpfs, never as an argument or in logs
+umask 077
+trap 'rm -f "$KEYFILE"' EXIT
+aws ssm get-parameter \
+  --region '${aws_region}' \
+  --name '${authkey_parameter_name}' \
+  --with-decryption \
+  --query Parameter.Value \
+  --output text >"$KEYFILE"
+
+tailscale up \
+  --auth-key="file:$KEYFILE" \
+  --advertise-exit-node \
+  --advertise-tags='${tailscale_tag}' \
+  --hostname='${tailscale_hostname}'
+
+mkdir -p "$(dirname "$MARKER")"
+touch "$MARKER"
+EOF
+chmod 700 /usr/local/sbin/tailscale-bootstrap.sh
+
+cat >/etc/systemd/system/tailscale-bootstrap.service <<'EOF'
+[Unit]
+Description=Install Tailscale and register as an exit node (runs until it succeeds once)
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=!/var/lib/qtailscale-ec2/registered
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/tailscale-bootstrap.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable tailscale-bootstrap.service
+systemctl start tailscale-bootstrap.service

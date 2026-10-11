@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars (which is git-ignored) and edit.
+aws_profile = "your-profile"
+
+# Everything below is optional; the defaults are shown.
+# aws_region                       = "us-west-2"
+# shortcut_token_parameter_name    = "/qtailscale-ec2/shortcut-token"
+# tailscale_authkey_parameter_name = "/qtailscale-ec2/tailscale-authkey"
+# tailscale_tag                    = "tag:exit-us"
+# tailscale_hostname               = "exit-us"
+# auto_stop_minutes                = 75
+# lambda_reserved_concurrency      = 1 # use -1 only while the account limit is too low to reserve
