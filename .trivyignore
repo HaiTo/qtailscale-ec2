@@ -1,0 +1,5 @@
+# List accepted findings here, one ID per line, each with a reason.
+# Expected findings (run trivy to get the exact IDs before adding them):
+# - Unrestricted egress on the security group: an exit node must reach any destination
+# - Public IP on the instance: outbound access without paying for a NAT gateway
+# - No VPC flow logs: cost over visibility for a personal setup

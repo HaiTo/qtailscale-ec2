@@ -1,0 +1,12 @@
+severity:
+  - MEDIUM
+  - HIGH
+  - CRITICAL
+
+scan:
+  skip-dirs:
+    - .terraform
+    - build
+
+# Accepted findings go in .trivyignore, each with a reason
+ignorefile: .trivyignore
