@@ -370,3 +370,7 @@ tflint --init
 ```
 
 This runs gitleaks, `terraform fmt`, `terraform validate`, tflint, and trivy on each commit.
+
+## License
+
+[MIT](LICENSE)
